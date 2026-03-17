@@ -1,0 +1,22 @@
+{
+  "cpu": {
+    "fqbn": "esp32:esp32:lilygo_t_display",
+    "name": "",
+    "type": "serial"
+  },
+  "secrets": [
+    {
+      "name": "SECRET_DEVICE_KEY",
+      "value": "6EeePwQUA2336!LwrNgL61NGr"
+    },
+    {
+      "name": "SECRET_OPTIONAL_PASS",
+      "value": "3aF15bFF"
+    },
+    {
+      "name": "SECRET_SSID",
+      "value": "Dialog 4G 713"
+    }
+  ],
+  "included_libs": []
+}

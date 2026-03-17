@@ -1,0 +1,158 @@
+  #include <Arduino.h>
+  #include <ESP32Servo.h>
+
+  // --- Motor Driver Pins ---
+  #define ENA 26
+  #define IN1 25
+  #define IN2 33
+  #define IN3 32
+  #define IN4 35
+  #define ENB 34
+
+  // --- Ultrasonic Sensor Pins ---
+  #define TRIG_PIN 14
+  #define ECHO_PIN 12
+
+  // --- Servo Pin ---
+  #define SERVO_PIN 13
+
+  Servo servoMotor;
+
+  // --- Variables ---
+  long duration;
+  int distance;
+
+  int speedMotor = 200; // 0-255 PWM speed
+  int safeDistance = 25; // cm
+
+  // --- Function Declarations ---
+  int getDistance();
+  void moveForward();
+  void moveBackward();
+  void turnLeft();
+  void turnRight();
+  void stopCar();
+
+  void setup() {
+    Serial.begin(115200);
+
+    // Motor pins
+    pinMode(ENA, OUTPUT);
+    pinMode(IN1, OUTPUT);
+    pinMode(IN2, OUTPUT);
+    pinMode(IN3, OUTPUT);
+    pinMode(IN4, OUTPUT);
+    pinMode(ENB, OUTPUT);
+
+    // Ultrasonic pins
+    pinMode(TRIG_PIN, OUTPUT);
+    pinMode(ECHO_PIN, INPUT);
+
+    // Servo setup
+    servoMotor.attach(SERVO_PIN);
+    servoMotor.write(90); // center position
+
+    Serial.println("ESP32 Ultrasonic Car Ready");
+  }
+
+  void loop() {
+    int distCenter = getDistance();
+    Serial.print("Center Distance: ");
+    Serial.println(distCenter);
+
+    if (distCenter > safeDistance) {
+      moveForward();
+    } else {
+      stopCar();
+      delay(300);
+      
+      // Look left
+      servoMotor.write(150);
+      delay(400);
+      int distLeft = getDistance();
+      
+      // Look right
+      servoMotor.write(30);
+      delay(400);
+      int distRight = getDistance();
+
+      // Back to center
+      servoMotor.write(90);
+      delay(200);
+
+      if (distLeft > distRight && distLeft > safeDistance) {
+        turnLeft();
+        delay(300);
+      } else if (distRight > safeDistance) {
+        turnRight();
+        delay(300);
+      } else {
+        moveBackward();
+        delay(300);
+      }
+    }
+  }
+
+  // --- Distance Function ---
+  int getDistance() {
+    digitalWrite(TRIG_PIN, LOW);
+    delayMicroseconds(2);
+    digitalWrite(TRIG_PIN, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(TRIG_PIN, LOW);
+
+    duration = pulseIn(ECHO_PIN, HIGH, 30000);
+    int distance = duration * 0.034 / 2;
+    return distance;
+  }
+
+  // --- Motor Functions ---
+  void moveForward() {
+    Serial.println("FWD");
+    analogWrite(ENA, speedMotor);
+    analogWrite(ENB, speedMotor);
+
+    digitalWrite(IN1, HIGH);
+    digitalWrite(IN2, LOW);
+    digitalWrite(IN3, HIGH);
+    digitalWrite(IN4, LOW);
+  }
+
+  void moveBackward() {
+    analogWrite(ENA, speedMotor);
+    analogWrite(ENB, speedMotor);
+
+    digitalWrite(IN1, LOW);
+    digitalWrite(IN2, HIGH);
+    digitalWrite(IN3, LOW);
+    digitalWrite(IN4, HIGH);
+  }
+
+  void turnRight() {
+    analogWrite(ENA, speedMotor);
+    analogWrite(ENB, speedMotor);
+
+    digitalWrite(IN1, LOW);
+    digitalWrite(IN2, HIGH);
+    digitalWrite(IN3, HIGH);
+    digitalWrite(IN4, LOW);
+  }
+
+  void turnLeft() {
+    analogWrite(ENA, speedMotor);
+    analogWrite(ENB, speedMotor);
+
+    digitalWrite(IN1, HIGH);
+    digitalWrite(IN2, LOW);
+    digitalWrite(IN3, LOW);
+    digitalWrite(IN4, HIGH);
+  }
+
+  void stopCar() {
+    digitalWrite(IN1, LOW);
+    digitalWrite(IN2, LOW);
+    digitalWrite(IN3, LOW);
+    digitalWrite(IN4, LOW);
+    analogWrite(ENA, 0);
+    analogWrite(ENB, 0);
+  }

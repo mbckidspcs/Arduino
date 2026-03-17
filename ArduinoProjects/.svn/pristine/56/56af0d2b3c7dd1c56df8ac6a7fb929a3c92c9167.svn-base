@@ -1,0 +1,75 @@
+#include <WiFi.h>
+#include <PubSubClient.h>
+
+#define PWM_PIN 13
+
+// Wi-Fi
+const char* ssid = "Dialog 4G 713";
+const char* password = "123456789";
+
+// MQTT
+const char* mqttServer = "broker.hivemq.com";
+const int mqttPort = 1883;
+const char* topic = "kd/rc/pwm";
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+volatile uint32_t riseTime = 0;
+volatile uint32_t pwmValue = 1500;
+
+unsigned long lastPublish = 0;
+const unsigned long publishInterval = 20; // 50Hz
+
+char prefix = 'S'; // default prefix
+
+// --- ISR to capture PWM ---
+void IRAM_ATTR pwmISR() {
+  if (digitalRead(PWM_PIN)) {
+    riseTime = micros();
+  } else {
+    pwmValue = micros() - riseTime;
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(PWM_PIN, INPUT);
+  attachInterrupt(digitalPinToInterrupt(PWM_PIN), pwmISR, CHANGE);
+
+  WiFi.begin(ssid, password);
+  Serial.println("Connecting to Wi-Fi...");
+  while(WiFi.status() != WL_CONNECTED) delay(200);
+  Serial.println("Wi-Fi Connected");
+
+  client.setServer(mqttServer, mqttPort);
+}
+
+void loop() {
+  // --- Non-blocking MQTT reconnect ---
+  if(!client.connected()) {
+    if(client.connect("ESP32_PWM_TX")) {
+      Serial.println("MQTT Connected");
+    }
+  }
+
+  client.loop();
+
+  // --- Non-blocking publish ---
+  if(millis() - lastPublish >= publishInterval) {
+    lastPublish = millis();
+
+    char msg[8]; // small buffer
+    sprintf(msg, "%c%lu", prefix, pwmValue); // F1500
+
+    client.publish(topic, msg);
+    Serial.println(msg);
+  }
+
+  // Optional: read prefix from Serial once per loop
+  if(Serial.available()) {
+    char c = Serial.read();
+    if(c >= 'A' && c <= 'Z') prefix = c; // update prefix
+  }
+}

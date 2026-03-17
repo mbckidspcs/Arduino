@@ -1,0 +1,309 @@
+  #include <BluetoothSerial.h>
+  #include <Adafruit_NeoPixel.h>
+
+  BluetoothSerial SerialBT;
+
+  // ----- Motor driver pins -----
+  #define ENA 14
+  #define IN1 27
+  #define IN2 26
+  #define IN3 25
+  #define IN4 33
+  #define ENB 32 
+
+  // ----- LED setup -----
+  #define LED_PIN 13
+  #define NUM_LEDS 44
+  Adafruit_NeoPixel strip(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
+
+  // LED segment mapping
+  #define LEFT_START 0
+  #define LEFT_END 12
+  #define FRONT_START 13
+  #define FRONT_END 21
+  #define RIGHT_START 22
+  #define RIGHT_END 35
+  #define BACK_START 36
+  #define BACK_END 43
+
+  int speedVal = 255;
+  int turnSpeed = 20;
+  bool effectActive = false;  // disables movement LEDs when effects run
+
+  // ----- FreeRTOS Task Handles -----
+  TaskHandle_t vipTaskHandle = NULL;
+  TaskHandle_t rainbowTaskHandle = NULL;
+
+  // -------------------------------------------------------------------
+  // Helper Functions
+  // -------------------------------------------------------------------
+  void clearLeds() {
+    strip.clear();
+    strip.show();
+  }
+
+  void setSegmentColor(int start, int end, uint32_t color) {
+     if (effectActive) return;
+     
+    for (int i = start; i <= end; i++) strip.setPixelColor(i, color);
+    strip.show();
+  }
+
+  // -------------------------------------------------------------------
+  // Motor control
+  // -------------------------------------------------------------------
+
+   void forwardLeft() {
+    digitalWrite(IN2, HIGH);
+    digitalWrite(IN1, LOW);
+    digitalWrite(IN3, HIGH);
+    digitalWrite(IN4, LOW);
+    analogWrite(ENA, turnSpeed);
+    analogWrite(ENB, speedVal);
+  }
+
+  void forwardRight() {
+    digitalWrite(IN1, HIGH);
+    digitalWrite(IN2, LOW);
+    digitalWrite(IN4, HIGH);
+    digitalWrite(IN3, LOW);
+    analogWrite(ENA, speedVal);
+    analogWrite(ENB, turnSpeed);
+  }
+
+  void backwardRight() {
+    digitalWrite(IN1, LOW);
+    digitalWrite(IN2, HIGH);
+    digitalWrite(IN3, LOW);
+    digitalWrite(IN4, HIGH);
+    analogWrite(ENA, turnSpeed);
+    analogWrite(ENB, speedVal);
+  }
+
+  void backwardLeft() {
+    digitalWrite(IN1, LOW);
+    digitalWrite(IN2, HIGH);
+    digitalWrite(IN4, LOW);
+    digitalWrite(IN3, HIGH);
+    analogWrite(ENA, speedVal);
+    analogWrite(ENB, turnSpeed);
+  }
+
+
+  void stopCar() {
+    digitalWrite(IN1, LOW);
+    digitalWrite(IN2, LOW);
+    digitalWrite(IN4, LOW);
+    digitalWrite(IN3, LOW);
+    analogWrite(ENA, 0);
+    analogWrite(ENB, 0);
+  }
+
+  void forward() {
+    Serial.println("Forward");
+    digitalWrite(IN1, HIGH); digitalWrite(IN2, LOW);
+    digitalWrite(IN3, HIGH); digitalWrite(IN4, LOW);
+    analogWrite(ENA, speedVal); analogWrite(ENB, speedVal);
+    clearLeds();
+    setSegmentColor(FRONT_START, FRONT_END, strip.Color(255, 255, 255));
+  }
+
+  void backward() {
+    Serial.println("Backward");
+    digitalWrite(IN1, LOW); digitalWrite(IN2, HIGH);
+    digitalWrite(IN3, LOW); digitalWrite(IN4, HIGH);
+    analogWrite(ENA, speedVal); analogWrite(ENB, speedVal);
+    clearLeds();
+    setSegmentColor(BACK_START, BACK_END, strip.Color(255, 0, 0));
+  }
+
+  void left() {
+    Serial.println("Left");
+    digitalWrite(IN1, LOW); digitalWrite(IN2, HIGH);
+    digitalWrite(IN3, HIGH); digitalWrite(IN4, LOW);
+    analogWrite(ENA, speedVal); analogWrite(ENB, speedVal);
+    clearLeds();
+    setSegmentColor(LEFT_START, LEFT_END, strip.Color(255, 255, 0));
+  }
+
+  void right() {
+   
+    Serial.println("Right");
+    digitalWrite(IN1, HIGH); digitalWrite(IN2, LOW);
+    digitalWrite(IN3, LOW); digitalWrite(IN4, HIGH);
+    analogWrite(ENA, speedVal); analogWrite(ENB, speedVal);
+    clearLeds();
+    setSegmentColor(RIGHT_START, RIGHT_END, strip.Color(255, 255, 0));
+  }
+
+  void stopAll() {
+    Serial.println("Stop");
+    stopCar();
+    if (!effectActive) clearLeds();
+  }
+
+  // -------------------------------------------------------------------
+  // VIP Light Thread (Task)
+  // -------------------------------------------------------------------
+  void vipLightTask(void *pvParameters) {
+    Serial.println("VIP Thread Started 🚨");
+    effectActive = true;
+    int strobDelay = 50;
+    int changeDelay = 100;
+
+    while (true) {
+      // RED flashing (left side)
+      for (int i = 0; i < 4; i++) {
+        for (int pos = FRONT_START; pos < FRONT_START + 5; pos++) {
+          strip.setPixelColor(pos, strip.Color(255, 0, 0));
+        }
+        strip.show();
+        vTaskDelay(strobDelay / portTICK_PERIOD_MS);
+        for (int pos = FRONT_START; pos < FRONT_START + 5; pos++) {
+          strip.setPixelColor(pos, 0);
+        }
+        strip.show();
+        vTaskDelay(strobDelay / portTICK_PERIOD_MS);
+      }
+
+      vTaskDelay(changeDelay / portTICK_PERIOD_MS);
+
+      // BLUE flashing (right side)
+      for (int i = 0; i < 3; i++) {
+        for (int pos = FRONT_START + 4; pos <= FRONT_END; pos++) {
+          strip.setPixelColor(pos, strip.Color(0, 0, 255));
+        }
+        strip.show();
+        vTaskDelay(strobDelay / portTICK_PERIOD_MS);
+        for (int pos = FRONT_START + 4; pos <= FRONT_END; pos++) {
+          strip.setPixelColor(pos, 0);
+        }
+        strip.show();
+        vTaskDelay(strobDelay / portTICK_PERIOD_MS);
+      }
+
+      vTaskDelay(changeDelay / portTICK_PERIOD_MS);
+    }
+
+    vTaskDelete(NULL);  // safety
+  }
+
+  // -------------------------------------------------------------------
+  // Rainbow Effect Thread (Task)
+  // -------------------------------------------------------------------
+  void rainbowTask(void *pvParameters) {
+    Serial.println("Rainbow Thread Started 🌈");
+    effectActive = true;
+    uint16_t i, j;
+
+    while (true) {
+      for (j = 0; j < 256 * 3; j++) {
+        for (i = 0; i < strip.numPixels(); i++) {
+          strip.setPixelColor(i, strip.ColorHSV((i * 256 / strip.numPixels() + j) * 256));
+        }
+        strip.show();
+        vTaskDelay(20 / portTICK_PERIOD_MS);
+      }
+    }
+
+    vTaskDelete(NULL);
+  }
+
+  // -------------------------------------------------------------------
+  // Setup
+  // -------------------------------------------------------------------
+  void setup() {
+    Serial.begin(115200);
+    SerialBT.begin("Abeeth's Car");
+
+    pinMode(IN1, OUTPUT);
+    pinMode(IN2, OUTPUT);
+    pinMode(IN3, OUTPUT);
+    pinMode(IN4, OUTPUT);
+    pinMode(ENA, OUTPUT);
+    pinMode(ENB, OUTPUT);
+
+    strip.begin();
+    strip.show();
+
+    stopCar();
+    clearLeds();
+
+    Serial.println("🚗 Bluetooth Car + LED System Ready!");
+  }
+
+  // -------------------------------------------------------------------
+  // Main Loop
+  // -------------------------------------------------------------------
+  void loop() {
+    if (SerialBT.available()) {
+      char cmd = SerialBT.read();
+      Serial.print("Command: ");
+      Serial.println(cmd);
+
+      switch (cmd) {
+        // Movement
+        case 'F': forward(); break;
+        case 'B': backward(); break;
+        case 'L': left(); break;
+        case 'R': right(); break;
+        case 'S': stopAll(); break;
+        case 'H': forwardRight(); break;
+        case 'G': forwardLeft(); break;
+        case 'J': backwardRight(); break;
+        case 'I': backwardLeft(); break;
+
+        // --- VIP Light ---
+        case 'V':
+          if (vipTaskHandle == NULL) {
+            Serial.println("Starting VIP Thread...");
+            if (rainbowTaskHandle != NULL) {  // stop rainbow first
+              vTaskDelete(rainbowTaskHandle);
+              rainbowTaskHandle = NULL;
+            }
+            clearLeds();
+            xTaskCreatePinnedToCore(vipLightTask, "VIP", 4096, NULL, 1, &vipTaskHandle, 0);
+          }
+          break;
+
+        case 'v':
+          if (vipTaskHandle != NULL) {
+            Serial.println("Stopping VIP Thread...");
+            vTaskDelete(vipTaskHandle);
+            vipTaskHandle = NULL;
+            effectActive = false;
+            clearLeds();
+          }
+          break;
+
+        // --- Rainbow Light ---
+        case 'U':
+          if (rainbowTaskHandle == NULL) {
+            Serial.println("Starting Rainbow Thread...");
+            if (vipTaskHandle != NULL) {  // stop VIP first
+              vTaskDelete(vipTaskHandle);
+              vipTaskHandle = NULL;
+            }
+            clearLeds();
+            xTaskCreatePinnedToCore(rainbowTask, "Rainbow", 4096, NULL, 1, &rainbowTaskHandle, 0);
+          }
+          break;
+
+        case 'u':
+          if (rainbowTaskHandle != NULL) {
+            Serial.println("Stopping Rainbow Thread...");
+            vTaskDelete(rainbowTaskHandle);
+            rainbowTaskHandle = NULL;
+            effectActive = false;
+            clearLeds();
+          }
+          break;
+
+        // Speed Levels
+        case '1': speedVal = 80; break;
+        case '2': speedVal = 150; break;
+        case '3': speedVal = 200; break;
+        case '4': speedVal = 255; break;
+      }
+    }
+  }
