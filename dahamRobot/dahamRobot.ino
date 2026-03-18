@@ -6,7 +6,7 @@
 
 // --- Configuration ---
 const char* ssid = "Robot_Car_AP";
-const char* password = "password123";
+const char* password = "12345678";
 
 // ESP32 38-pin I2C default pins
 #define I2C_SDA 21
@@ -32,55 +32,86 @@ const int RIGHT_DOWN = 180;
 int currentSpeed = 150; 
 String currentDir = "STOP";
 bool isMoving = false;
+String customLCDText = "";
 
-// --- HTML Web Page ---
+// --- HTML Web Page (Modern Arrow Layout) ---
 const char* htmlPage = R"rawliteral(
 <!DOCTYPE html><html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-  body { font-family: 'Segoe UI', sans-serif; text-align: center; background: #1a1a1a; color: white; margin: 0; padding: 20px; }
-  .grid { display: grid; grid-template-columns: repeat(3, 80px); justify-content: center; gap: 15px; margin-top: 20px; }
-  .btn { width: 80px; height: 80px; border-radius: 15px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; user-select: none; -webkit-tap-highlight-color: transparent; }
-  .move { background: #3498db; color: white; }
-  .stop { background: #e74c3c; color: white; grid-column: 2; }
-  .btn:active { transform: scale(0.9); background: #2ecc71; }
-  .slider-container { margin: 40px auto; width: 90%; max-width: 400px; background: #2c3e50; padding: 20px; border-radius: 15px; }
-  input[type=range] { width: 100%; height: 10px; border-radius: 5px; background: #555; outline: none; -webkit-appearance: none; }
-  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 30px; height: 30px; border-radius: 50%; background: #2ecc71; cursor: pointer; border: 3px solid white; }
+  body { font-family: 'Segoe UI', sans-serif; text-align: center; background: #0f0f0f; color: #e0e0e0; margin: 0; padding: 20px; }
+  .controller { display: grid; grid-template-columns: repeat(3, 80px); grid-template-rows: repeat(3, 80px); justify-content: center; gap: 15px; margin: 30px auto; }
+  .btn { background: #222; color: #3498db; border: 2px solid #3498db; border-radius: 15px; font-size: 32px; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; user-select: none; -webkit-tap-highlight-color: transparent; }
+  .btn:active { background: #3498db; color: #fff; transform: scale(0.9); box-shadow: 0 0 20px #3498db; }
+  .stop-btn { background: #c0392b; border-color: #e74c3c; color: white; grid-column: 2; grid-row: 2; font-size: 20px; font-weight: bold; }
+  .stop-btn:active { background: #e74c3c; box-shadow: 0 0 20px #e74c3c; }
+  
+  .slider-card, .text-card { background: #1a1a1a; padding: 20px; border-radius: 20px; max-width: 400px; margin: 20px auto; border: 1px solid #333; }
+  input[type=range] { width: 100%; height: 8px; border-radius: 5px; background: #333; outline: none; -webkit-appearance: none; margin: 15px 0; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 25px; height: 25px; border-radius: 50%; background: #3498db; cursor: pointer; border: 3px solid #fff; }
+  
+  .input-group { display: flex; gap: 10px; margin-top: 10px; }
+  input[type=text] { flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #444; background: #000; color: #3498db; outline: none; }
+  .send-btn { padding: 10px 20px; background: #3498db; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
 </style></head>
 <body>
-  <h2>ROBOT COMMAND</h2>
-  <div class="grid">
-    <button class="btn move" style="grid-column: 2" onmousedown="send('forward')" onmouseup="send('stop')" ontouchstart="send('forward')" ontouchend="send('stop')">UP</button>
-    <button class="btn move" onmousedown="send('left')" onmouseup="send('stop')" ontouchstart="send('left')" ontouchend="send('stop')">LEFT</button>
-    <button class="btn stop" onclick="send('stop')">STOP</button>
-    <button class="btn move" onmousedown="send('right')" onmouseup="send('stop')" ontouchstart="send('right')" ontouchend="send('stop')">RIGHT</button>
-    <button class="btn move" style="grid-column: 2" onmousedown="send('backward')" onmouseup="send('stop')" ontouchstart="send('backward')" ontouchend="send('stop')">DOWN</button>
+  <h2 style="color: #3498db; letter-spacing: 2px; margin-bottom: 5px;">NEO TECH VISION</h2>
+  <p style="color: #666; font-size: 12px; margin: 0;">REMOTE CONTROLLER</p>
+  
+  <div class="controller">
+    <!-- UP -->
+    <button class="btn" style="grid-column: 2; grid-row: 1;" onmousedown="send('forward')" onmouseup="send('stop')" ontouchstart="send('forward')" ontouchend="send('stop')">&#129145;</button>
+    
+    <!-- LEFT -->
+    <button class="btn" style="grid-column: 1; grid-row: 2;" onmousedown="send('left')" onmouseup="send('stop')" ontouchstart="send('left')" ontouchend="send('stop')">&#129144;</button>
+    
+    <!-- STOP -->
+    <button class="btn stop-btn" onclick="send('stop')">STOP</button>
+    
+    <!-- RIGHT -->
+    <button class="btn" style="grid-column: 3; grid-row: 2;" onmousedown="send('right')" onmouseup="send('stop')" ontouchstart="send('right')" ontouchend="send('stop')">&#129146;</button>
+    
+    <!-- DOWN -->
+    <button class="btn" style="grid-column: 2; grid-row: 3;" onmousedown="send('backward')" onmouseup="send('stop')" ontouchstart="send('backward')" ontouchend="send('stop')">&#129147;</button>
   </div>
-  <div class="slider-container">
-    <p>SPEED: <span id="val">150</span></p>
+
+  <div class="slider-card">
+    <p style="margin:0;">ENGINE POWER: <span id="val" style="color:#3498db; font-weight:bold;">150</span></p>
     <input type="range" min="0" max="255" value="150" oninput="updateSpeed(this.value)">
   </div>
+
+  <div class="text-card">
+    <p style="margin:0 0 10px 0; font-size: 14px; color: #888;">LCD ROW 4 MESSAGE</p>
+    <div class="input-group">
+      <input type="text" id="lcdMsg" placeholder="Type here..." maxlength="16">
+      <button class="send-btn" onclick="sendText()">SEND</button>
+    </div>
+  </div>
+
   <script>
     function send(dir) { fetch('/' + dir); }
     function updateSpeed(s) { document.getElementById('val').innerText = s; fetch('/speed?v=' + s); }
+    function sendText() { 
+      let msg = document.getElementById('lcdMsg').value;
+      fetch('/msg?t=' + encodeURIComponent(msg));
+    }
   </script>
 </body></html>)rawliteral";
 
 // --- LCD and Utility Functions ---
 
-void updateLCD() {
-  lcd.setCursor(0, 1);
-  lcd.print("DIR  : " + currentDir + "      ");
-  lcd.setCursor(0, 2);
-  lcd.print("SPEED: " + String(currentSpeed) + "  / 255 ");
+void initiatDisplay(){
+  lcd.clear();
+  lcd.setCursor(1, 0); lcd.print("NAMO BUDDHAYA!");
+  lcd.setCursor(3, 1); lcd.print("WELCOME TO");
+  lcd.setCursor(-3, 2); lcd.print("NEO TECH VISION");
 }
 
-void applyMotors(int s1, int s2, int s3, int s4) {
+void applyMotors(int s1, int s2, int s3, int s4,int speed) {
   digitalWrite(IN1, s1); digitalWrite(IN2, s2);
   digitalWrite(IN3, s3); digitalWrite(IN4, s4);
-  analogWrite(ENA, currentSpeed);
-  analogWrite(ENB, currentSpeed);
+  analogWrite(ENA, speed);
+  analogWrite(ENB, speed);
 }
 
 void scanI2C() {
@@ -98,48 +129,45 @@ void scanI2C() {
       nDevices++;
     }
   }
-  if (nDevices == 0) Serial.println("No I2C devices found\n");
 }
 
 // --- Movement Functions ---
 
 void robotForward() {
+  initiatDisplay();
   currentDir = "FORWARD";
   isMoving = true;
-  applyMotors(HIGH, LOW, HIGH, LOW);
-  updateLCD();
+  applyMotors(HIGH, LOW, HIGH, LOW,currentSpeed);
   Serial.println("Robot: Moving Forward");
 }
 
 void robotBackward() {
+  lcd.clear();
+  lcd.setCursor(3, 1); lcd.print("BYE !!!");
   currentDir = "BACKWARD";
   isMoving = true;
-  applyMotors(LOW, HIGH, LOW, HIGH);
-  updateLCD();
+  applyMotors(LOW, HIGH, LOW, HIGH,currentSpeed);
   Serial.println("Robot: Moving Backward");
 }
 
-void robotLeft() {
+void robotRight() {
   currentDir = "LEFT";
   isMoving = true;
-  applyMotors(LOW, HIGH, HIGH, LOW);
-  updateLCD();
+  applyMotors(LOW, HIGH, HIGH, LOW,currentSpeed+20);
   Serial.println("Robot: Turning Left");
 }
 
-void robotRight() {
+void robotLeft() {
   currentDir = "RIGHT";
   isMoving = true;
-  applyMotors(HIGH, LOW, LOW, HIGH);
-  updateLCD();
+  applyMotors(HIGH, LOW, LOW, HIGH,currentSpeed+20);
   Serial.println("Robot: Turning Right");
 }
 
 void robotStop() {
   currentDir = "STOP";
   isMoving = false;
-  applyMotors(LOW, LOW, LOW, LOW);
-  updateLCD();
+  applyMotors(LOW, LOW, LOW, LOW, currentSpeed);
   Serial.println("Robot: Stopped");
 }
 
@@ -147,43 +175,24 @@ void robotStop() {
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("\n--- Robot Booting ---");
-  
-  // Explicitly start I2C
   Wire.begin(I2C_SDA, I2C_SCL);
   scanI2C();
 
-  // LCD Init
   lcd.init(); 
   lcd.backlight();
-  lcd.setCursor(0, 0); lcd.print("Robot Initializing");
-
-  // Motor Pins
+  initiatDisplay();
+  
   pinMode(IN1, OUTPUT); pinMode(IN2, OUTPUT);
   pinMode(IN3, OUTPUT); pinMode(IN4, OUTPUT);
   pinMode(ENA, OUTPUT); pinMode(ENB, OUTPUT);
 
-  // Servos - Set to DOWN position immediately
   leftServo.attach(13); 
   rightServo.attach(12);
- // leftServo.write(LEFT_DOWN);
-//  rightServo.write(RIGHT_DOWN);
-  Serial.println("Servos Initialized to DOWN position");
 
-  // WiFi Access Point
   WiFi.softAP(ssid, password);
-  IPAddress IP = WiFi.softAPIP();
-  lcd.clear();
-  lcd.setCursor(0, 0); lcd.print("SSID: " + String(ssid));
-  lcd.setCursor(0, 3); lcd.print("IP  : 192.168.4.1");
   
-  Serial.print("AP Started. SSID: "); Serial.println(ssid);
-  Serial.print("Web Server IP: "); Serial.println(IP);
-
-  // Web Routes
   server.on("/", []() { 
     server.send(200, "text/html", htmlPage); 
-    Serial.println("Web: Interface loaded");
   });
   
   server.on("/forward", []() { robotForward(); server.send(200); });
@@ -195,27 +204,33 @@ void setup() {
   server.on("/speed", []() {
     if (server.hasArg("v")) {
       currentSpeed = server.arg("v").toInt();
-      Serial.print("Speed Update: "); Serial.println(currentSpeed);
-      if (isMoving) applyMotors(digitalRead(IN1), digitalRead(IN2), digitalRead(IN3), digitalRead(IN4));
-      updateLCD();
+      if (isMoving) applyMotors(digitalRead(IN1), digitalRead(IN2), digitalRead(IN3), digitalRead(IN4),currentSpeed);
+    }
+    server.send(200);
+  });
+
+  server.on("/msg", []() {
+    if (server.hasArg("t")) {
+      customLCDText = server.arg("t");
+      lcd.clear();
+      lcd.setCursor(-3, 1); 
+      lcd.print("                ");
+      lcd.setCursor(-3, 1); // Changed from -3 offset to 0 for standard printing
+      lcd.print(customLCDText);
     }
     server.send(200);
   });
 
   server.begin();
-  updateLCD();
-  Serial.println("HTTP Server Ready");
 }
 
 void animateHands() {
   static unsigned long lastMove = 0;
   static int angle = 0;
   static bool dirUp = true;
-  
   if (millis() - lastMove > 30) {
     if (dirUp) angle += 2; else angle -= 2;
     if (angle >= 40 || angle <= 0) dirUp = !dirUp;
-    
     leftServo.write(angle);
     rightServo.write(angle);
     lastMove = millis();
@@ -226,9 +241,5 @@ void loop() {
   server.handleClient();
   if (isMoving && currentDir == "FORWARD") {
     animateHands();
-  } else {
-    // Keep hands in DOWN position when not moving forward
-  //  leftServo.write(LEFT_DOWN);
-   // rightServo.write(RIGHT_DOWN);
   }
 }
