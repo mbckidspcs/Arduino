@@ -8,6 +8,11 @@
 const char* ssid = "Robot_Car_AP";
 const char* password = "password123";
 
+// ESP32 38-pin I2C default pins
+#define I2C_SDA 21
+#define I2C_SCL 22
+
+// Try 0x27 or 0x3F if 0x27 fails
 WebServer server(80);
 LiquidCrystal_I2C lcd(0x27, 16, 4); 
 
@@ -19,8 +24,12 @@ const int IN1 = 27; const int IN2 = 26; // Left Motor
 const int IN3 = 25; const int IN4 = 33; // Right Motor
 const int ENA = 14; const int ENB = 32; // Speed Pins (PWM)
 
+// Servo "Down" Positions
+const int LEFT_DOWN = 0;
+const int RIGHT_DOWN = 180;
+
 // State Variables
-int currentSpeed = 150; // Default speed (0-255)
+int currentSpeed = 150; 
 String currentDir = "STOP";
 bool isMoving = false;
 
@@ -58,6 +67,8 @@ const char* htmlPage = R"rawliteral(
   </script>
 </body></html>)rawliteral";
 
+// --- LCD and Utility Functions ---
+
 void updateLCD() {
   lcd.setCursor(0, 1);
   lcd.print("DIR  : " + currentDir + "      ");
@@ -68,17 +79,83 @@ void updateLCD() {
 void applyMotors(int s1, int s2, int s3, int s4) {
   digitalWrite(IN1, s1); digitalWrite(IN2, s2);
   digitalWrite(IN3, s3); digitalWrite(IN4, s4);
-  
-  // Using analogWrite instead of ledcAttachPin/ledcWrite
   analogWrite(ENA, currentSpeed);
   analogWrite(ENB, currentSpeed);
 }
 
+void scanI2C() {
+  byte error, address;
+  int nDevices = 0;
+  Serial.println("Scanning I2C...");
+  for(address = 1; address < 127; address++ ) {
+    Wire.beginTransmission(address);
+    error = Wire.endTransmission();
+    if (error == 0) {
+      Serial.print("I2C device found at address 0x");
+      if (address < 16) Serial.print("0");
+      Serial.print(address, HEX);
+      Serial.println(" !");
+      nDevices++;
+    }
+  }
+  if (nDevices == 0) Serial.println("No I2C devices found\n");
+}
+
+// --- Movement Functions ---
+
+void robotForward() {
+  currentDir = "FORWARD";
+  isMoving = true;
+  applyMotors(HIGH, LOW, HIGH, LOW);
+  updateLCD();
+  Serial.println("Robot: Moving Forward");
+}
+
+void robotBackward() {
+  currentDir = "BACKWARD";
+  isMoving = true;
+  applyMotors(LOW, HIGH, LOW, HIGH);
+  updateLCD();
+  Serial.println("Robot: Moving Backward");
+}
+
+void robotLeft() {
+  currentDir = "LEFT";
+  isMoving = true;
+  applyMotors(LOW, HIGH, HIGH, LOW);
+  updateLCD();
+  Serial.println("Robot: Turning Left");
+}
+
+void robotRight() {
+  currentDir = "RIGHT";
+  isMoving = true;
+  applyMotors(HIGH, LOW, LOW, HIGH);
+  updateLCD();
+  Serial.println("Robot: Turning Right");
+}
+
+void robotStop() {
+  currentDir = "STOP";
+  isMoving = false;
+  applyMotors(LOW, LOW, LOW, LOW);
+  updateLCD();
+  Serial.println("Robot: Stopped");
+}
+
+// --- Setup and Loop ---
+
 void setup() {
   Serial.begin(115200);
+  Serial.println("\n--- Robot Booting ---");
   
+  // Explicitly start I2C
+  Wire.begin(I2C_SDA, I2C_SCL);
+  scanI2C();
+
   // LCD Init
-  lcd.init(); lcd.backlight();
+  lcd.init(); 
+  lcd.backlight();
   lcd.setCursor(0, 0); lcd.print("Robot Initializing");
 
   // Motor Pins
@@ -86,27 +163,39 @@ void setup() {
   pinMode(IN3, OUTPUT); pinMode(IN4, OUTPUT);
   pinMode(ENA, OUTPUT); pinMode(ENB, OUTPUT);
 
-  // Servos
-  leftServo.attach(13); rightServo.attach(12);
+  // Servos - Set to DOWN position immediately
+  leftServo.attach(13); 
+  rightServo.attach(12);
+ // leftServo.write(LEFT_DOWN);
+//  rightServo.write(RIGHT_DOWN);
+  Serial.println("Servos Initialized to DOWN position");
 
   // WiFi Access Point
   WiFi.softAP(ssid, password);
+  IPAddress IP = WiFi.softAPIP();
   lcd.clear();
   lcd.setCursor(0, 0); lcd.print("SSID: " + String(ssid));
   lcd.setCursor(0, 3); lcd.print("IP  : 192.168.4.1");
+  
+  Serial.print("AP Started. SSID: "); Serial.println(ssid);
+  Serial.print("Web Server IP: "); Serial.println(IP);
 
   // Web Routes
-  server.on("/", []() { server.send(200, "text/html", htmlPage); });
+  server.on("/", []() { 
+    server.send(200, "text/html", htmlPage); 
+    Serial.println("Web: Interface loaded");
+  });
   
-  server.on("/forward", []() { currentDir = "FORWARD"; isMoving = true; applyMotors(HIGH, LOW, HIGH, LOW); updateLCD(); server.send(200); });
-  server.on("/backward", []() { currentDir = "BACKWARD"; isMoving = true; applyMotors(LOW, HIGH, LOW, HIGH); updateLCD(); server.send(200); });
-  server.on("/left", []() { currentDir = "LEFT"; isMoving = true; applyMotors(LOW, HIGH, HIGH, LOW); updateLCD(); server.send(200); });
-  server.on("/right", []() { currentDir = "RIGHT"; isMoving = true; applyMotors(HIGH, LOW, LOW, HIGH); updateLCD(); server.send(200); });
-  server.on("/stop", []() { currentDir = "STOP"; isMoving = false; applyMotors(LOW, LOW, LOW, LOW); updateLCD(); server.send(200); });
+  server.on("/forward", []() { robotForward(); server.send(200); });
+  server.on("/backward", []() { robotBackward(); server.send(200); });
+  server.on("/left", []() { robotLeft(); server.send(200); });
+  server.on("/right", []() { robotRight(); server.send(200); });
+  server.on("/stop", []() { robotStop(); server.send(200); });
   
   server.on("/speed", []() {
     if (server.hasArg("v")) {
       currentSpeed = server.arg("v").toInt();
+      Serial.print("Speed Update: "); Serial.println(currentSpeed);
       if (isMoving) applyMotors(digitalRead(IN1), digitalRead(IN2), digitalRead(IN3), digitalRead(IN4));
       updateLCD();
     }
@@ -115,31 +204,31 @@ void setup() {
 
   server.begin();
   updateLCD();
+  Serial.println("HTTP Server Ready");
 }
 
 void animateHands() {
   static unsigned long lastMove = 0;
-  static int angle = 60;
+  static int angle = 0;
   static bool dirUp = true;
   
-  if (millis() - lastMove > 15) { // Control animation speed
+  if (millis() - lastMove > 30) {
     if (dirUp) angle += 2; else angle -= 2;
-    if (angle >= 120 || angle <= 60) dirUp = !dirUp;
+    if (angle >= 40 || angle <= 0) dirUp = !dirUp;
     
     leftServo.write(angle);
-    rightServo.write(180 - angle); // Opposite swing
+    rightServo.write(angle);
     lastMove = millis();
   }
 }
 
 void loop() {
   server.handleClient();
-  
   if (isMoving && currentDir == "FORWARD") {
     animateHands();
   } else {
-    // Return arms to neutral when stopped or turning
-    leftServo.write(90);
-    rightServo.write(90);
+    // Keep hands in DOWN position when not moving forward
+  //  leftServo.write(LEFT_DOWN);
+   // rightServo.write(RIGHT_DOWN);
   }
 }
